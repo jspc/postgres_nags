@@ -1,0 +1,58 @@
+#!/usr/bin/env ruby
+#-*- mode ruby -*-
+
+$LOAD_PATH.push File.join(File.dirname(__FILE__), '..', 'lib')
+
+require 'postgres_nag'
+
+require 'optparse'
+
+username  = nil
+password  = nil
+warning   = 30
+critical  = 45
+task_name = nil
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: #{$0} [options]"
+  opts.on("-u", "--username USERNAME")        { |u| username  = u.to_s }
+  opts.on("-p", "--password PASSWORD")        { |p| password  = p.to_s }
+  opts.on("-w", "--warning WARNING_LEVEL")    { |w| warning   = w.to_i }
+  opts.on("-c", "--critical CRITICAL_LEVEL")  { |c| critical  = c.to_i }
+  opts.on("-t", "--task TASK_NAME")           { |t| task_name = t.to_s }
+end.parse!
+
+if task_name.nil?
+  puts 'You must specify a task'
+  exit 3
+end
+
+unless warning < critical
+  puts "Unknown: your warning value ought to be below critical"
+  exit 3
+end
+
+begin
+  connection = PostgresNag::Connection.new 'nrpe'
+rescue PostgresNag::ConnectionError => e
+  puts "Crtitical: #{e}"
+  exit 2
+rescue PostgresNag::DaFuq => e
+  puts "Unkonwn: #{e}"
+  exit 3
+end
+
+result = connection.execute(task_name.to_sym)
+msg  = "#{task_name} returned #{result} items"
+
+case result
+when 0...warning
+  puts "OK: #{msg}"
+  exit 0
+when warning...critical
+  puts "Warning: #{msg}"
+  exit 1
+else
+  puts "Critical: #{msg}"
+  exit 2
+end
